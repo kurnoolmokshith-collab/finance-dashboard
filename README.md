@@ -96,4 +96,17 @@ Benchmark data lives in the `RBI_BENCHMARKS` dictionary (plus `PEER_TIERS` and t
 
 Open `index.html` directly in a browser — no build step or server required. It ships with a self-contained screener UI (Chart.js loaded from CDN for charting).
 
-The credit-risk model's `--json` output is designed to be fed into dashboard tooling: per-document composite scores, bands, ratio details, and flags are all serialised in a stable structure.
+### 🏦 Bank Health tab (engine ↔ dashboard integration)
+
+The dashboard has a dedicated **Bank Health** tab that visualises the credit-risk model's output inside the same dark fintech UI used for the equity screener:
+
+1. Run the engine and export its JSON summary:
+   ```bash
+   python bank_nbfc_credit_risk.py reports/ --json out.json
+   ```
+2. Open `index.html`, click **🏦 Bank Health (RBI)** on the landing screen (or the tab after any stock analysis).
+3. Either **📂 Load out.json**, paste JSON via **📋 Paste JSON → ✅ Render Pasted JSON**, or click **✨ Demo: Silverline Bank** for the built-in sample (no file needed).
+
+The pane renders, per assessed institution: a CAMELS composite score ring, the band badge (`strong` / `satisfactory` / `adequate` / `weak` with colour coding), animated metric-level score bars, risk flags, and the full detected-ratio table (value, unit, period, source). It accepts both the full multi-document `out.json` and a single `{composite, band, scores, flags, ratios}` document object.
+
+The credit-risk model's `--json` output is a stable contract: per-document composite scores, bands, ratio details (with `period` and `method`), and flags are all serialised in the structure this tab consumes.

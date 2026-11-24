@@ -325,6 +325,18 @@
   .fin-table tbody tr.sub-row td:first-child { padding-left: 32px; color: var(--text-secondary); font-size: 12px; }
   .val-pos { color: var(--green-bright) !important; }
   .val-neg { color: var(--red-bright) !important; }
+
+  /* Bank Health tab */
+  .bh-band { display:inline-block; padding:4px 14px; border-radius:6px; font-weight:700; font-size:12px; letter-spacing:1px; text-transform:uppercase; }
+  .bh-band-strong { background:rgba(34,197,94,.15); color:var(--green-bright); border:1px solid rgba(34,197,94,.4); }
+  .bh-band-satisfactory { background:rgba(46,156,212,.15); color:var(--accent-bright); border:1px solid rgba(46,156,212,.4); }
+  .bh-band-adequate { background:rgba(251,191,36,.15); color:#fbbf24; border:1px solid rgba(251,191,36,.4); }
+  .bh-band-weak { background:rgba(248,113,113,.15); color:var(--red-bright); border:1px solid rgba(248,113,113,.4); }
+  .bh-flag { display:flex; gap:10px; align-items:flex-start; padding:10px 14px; margin-bottom:8px; background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--red-bright); border-radius:8px; font-size:13px; color:var(--text-primary); }
+  .bh-controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:14px 16px; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; margin-bottom:20px; }
+  .bh-btn { padding:8px 16px; border-radius:8px; border:1px solid var(--border-bright); background:var(--bg-card2); color:var(--text-primary); font-family:var(--font-mono); font-size:12px; cursor:pointer; }
+  .bh-btn:hover { border-color:var(--accent-bright); color:var(--accent-bright); }
+  .bh-file { font-size:12px; color:var(--text-secondary); }
   .val-gold { color: var(--accent-gold) !important; }
 
   /* TWO COLUMN LAYOUT */
@@ -535,6 +547,7 @@
   <button class="tab-btn" onclick="switchTab('dcf')">🎯 DCF & Forecast</button>
   <button class="tab-btn" onclick="switchTab('scorecard')">🏆 Scorecard</button>
   <button class="tab-btn" onclick="switchTab('peers')">👥 Peer Comparison</button>
+  <button class="tab-btn" onclick="switchTab('bankhealth')">🏦 Bank Health</button>
 </div>
 
 <!-- MAIN CONTENT -->
@@ -553,7 +566,9 @@
       <div class="feat-badge"><span>👥</span> Peer Comparison</div>
       <div class="feat-badge"><span>📐</span> DuPont Analysis</div>
       <div class="feat-badge"><span>📉</span> 6 Live Charts</div>
+      <div class="feat-badge" style="cursor:pointer" onclick="openBankHealth(event)"><span>🏦</span> Bank Health (RBI)</div>
     </div>
+    <div style="margin-top:18px;font-size:12px;color:var(--text-dim)">Tip: the <b style="color:var(--text-secondary)">🏦 Bank Health</b> tab also appears after any stock analysis — it scores banks &amp; NBFCs against RBI benchmarks.</div>
   </div>
 
   <!-- LOADING STATE -->
@@ -648,6 +663,28 @@
     <!-- PEERS TAB -->
     <div class="tab-content" id="tab-peers">
       <div id="peersHtml"></div>
+    </div>
+
+    <!-- BANK HEALTH TAB -->
+    <div class="tab-content" id="tab-bankhealth">
+      <div class="section-title">🏦 Bank &amp; NBFC Credit Health Assessment</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
+        Institution-level credit risk scored against <b style="color:var(--text-primary)">RBI benchmarks</b> (FSR Dec 2025 / T&amp;P 2025).
+        Load the JSON summary produced by <span style="font-family:var(--font-mono);color:var(--accent-bright)">bank_nbfc_credit_risk.py reports/ --json out.json</span>, paste its document section, or open the built-in demo.
+      </div>
+      <div class="bh-controls">
+        <label class="bh-btn" for="bhFileInput">📂 Load out.json</label>
+        <input type="file" id="bhFileInput" accept=".json" style="display:none" onchange="loadBankHealthFile(this)">
+        <button class="bh-btn" onclick="toggleBhPaste()">📋 Paste JSON</button>
+        <button class="bh-btn" onclick="loadBankHealthPaste()">✅ Render Pasted JSON</button>
+        <button class="bh-btn" onclick="loadBankHealthSample()">✨ Demo: Silverline Bank</button>
+        <span class="bh-file">Accepts the full <code>out.json</code> (multi-document) or a single <code>{composite, band, scores, flags, ratios}</code> object.</span>
+      </div>
+      <textarea id="bhPaste" rows="6" placeholder='Paste JSON here, then click "Render Pasted JSON"…' style="width:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-family:var(--font-mono);font-size:12px;padding:10px;margin-bottom:20px;display:none"></textarea>
+      <div id="bankHealthHtml"></div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:24px">
+        ⚠️ Educational / research use. Benchmark data: RBI Financial Stability Report (Dec 2025) &amp; Trend and Progress of Banking in India (2024-25). Not investment or regulatory advice.
+      </div>
     </div>
 
     <div class="disclaimer">
@@ -1713,6 +1750,167 @@ function renderPeerCharts(d) {
       options: { ...baseOpts(), indexAxis: 'y' }
     });
   }
+}
+
+// ─── BANK HEALTH TAB (consumes bank_nbfc_credit_risk.py --json output) ───
+const BH_RATIO_LABELS = {
+  gnpa: 'Gross NPA %', nnpa: 'Net NPA %', pcr: 'Provisioning Coverage %',
+  crar: 'CRAR %', cet1: 'CET-1 %', tier1: 'Tier-1 %', roa: 'ROA %',
+  roe: 'ROE %', nim: 'NIM %', casar: 'CASA %', ldr: 'Credit-Deposit %',
+  gnpa_amount: 'Gross NPA (₹)', gross_advances: 'Gross Advances (₹)',
+  credit_growth: 'Credit Growth YoY %'
+};
+const BH_SAMPLE_DOC = {"composite": 27.8, "band": "weak", "scores": {"gnpa": 33.3, "nnpa": 30.0, "pcr": 59.1, "crar": 0.0, "cet1": 6.7, "roa": 30.0, "roe": 52.5, "nim": 30.8}, "flags": ["Credit growth 22% YoY: classic exuberance flag; watch unsecured/CRE concentration and 2-3 year migration.", "GNPA far above aggregate: provisioning demand will compress profitability and dividends."], "ratios": {"gnpa": {"value": 3.4, "unit": "pct", "period": "FY2024", "method": "regex"}, "nnpa": {"value": 1.1, "unit": "pct", "period": "FY2024", "method": "regex"}, "pcr": {"value": 68.0, "unit": "pct", "period": "FY2024", "method": "regex"}, "crar": {"value": 12.6, "unit": "pct", "period": "FY2024", "method": "regex"}, "cet1": {"value": 9.8, "unit": "pct", "period": "FY2024", "method": "regex"}, "roa": {"value": 0.7, "unit": "pct", "period": "FY2024", "method": "regex"}, "roe": {"value": 9.2, "unit": "pct", "period": "FY2024", "method": "regex"}, "nim": {"value": 2.6, "unit": "pct", "period": "FY2024", "method": "regex"}, "ldr": {"value": 88.0, "unit": "pct", "period": "FY2024", "method": "regex"}, "gnpa_amount": {"value": 1250000000000.0, "unit": "amount_inr", "period": "FY2024", "method": "regex"}, "gross_advances": {"value": 1250000000000.0, "unit": "amount_inr", "period": "FY2024", "method": "regex"}, "credit_growth": {"value": 22.0, "unit": "pct", "period": "", "method": "regex"}}, "entity": "Silverline Bank", "entity_type": "bank", "benchmarks_as_of": "2025-09-30 (FSR Dec 2025 / T&P 2025)"};
+
+function bhBandColor(band) {
+  return band === 'strong' ? '#22c55e' : band === 'satisfactory' ? '#2e9cd4' :
+         band === 'adequate' ? '#fbbf24' : '#f87171';
+}
+
+function bhFmtAmount(v) {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  if (v >= 1e12) return '₹' + fmt(v/1e12, 2) + ' lakh cr';
+  if (v >= 1e7)  return '₹' + fmt(v/1e7, 0) + ' cr';
+  if (v >= 1e5)  return '₹' + fmt(v/1e5, 0) + ' lakh';
+  return '₹' + fmt(v, 0);
+}
+
+function openBankHealth(ev) {
+  document.getElementById('landingState').style.display = 'none';
+  document.getElementById('loadingState').style.display = 'none';
+  document.getElementById('errorState').style.display = 'none';
+  document.getElementById('resultsArea').style.display = 'block';
+  document.getElementById('tabsWrap').style.display = 'flex';
+  if (ev && ev.target) {
+    switchTab('bankhealth');
+  } else {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-bankhealth').classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(b => { if (b.textContent.includes('Bank Health')) b.classList.add('active'); });
+  }
+}
+
+function toggleBhPaste() {
+  const ta = document.getElementById('bhPaste');
+  ta.style.display = ta.style.display === 'none' ? 'block' : 'none';
+}
+
+function loadBankHealthFile(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = e => loadBankHealthRaw(e.target.result, f.name);
+  reader.onerror = () => alert('Could not read the file.');
+  reader.readAsText(f);
+  input.value = '';
+}
+
+function loadBankHealthPaste() {
+  loadBankHealthRaw(document.getElementById('bhPaste').value, 'pasted JSON');
+}
+
+function loadBankHealthSample() {
+  renderBankHealth({documents: {'silverline.txt (demo)': BH_SAMPLE_DOC}}, 'embedded demo');
+}
+
+function loadBankHealthRaw(raw, srcName) {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    alert('Invalid JSON from ' + srcName + ': ' + err.message);
+    return;
+  }
+  renderBankHealth(data, srcName);
+}
+
+function renderBankHealth(data, srcName) {
+  if (data && data.documents && typeof data.documents === 'object') {
+    const entries = Object.entries(data.documents);
+    if (entries.length) {
+      const asOf = data.benchmarks_as_of ?
+        `<div style="font-size:12px;color:var(--text-dim);margin-bottom:16px">Benchmarks as of ${data.benchmarks_as_of} · source: ${srcName}</div>` : '';
+      document.getElementById('bankHealthHtml').innerHTML =
+        asOf + entries.map(([name, doc]) => renderBankDoc(name, doc)).join('');
+      requestAnimationFrame(animateBhBars);
+      return;
+    }
+  }
+  if (data && typeof data.composite === 'number') {
+    document.getElementById('bankHealthHtml').innerHTML =
+      renderBankDoc('assessment', data);
+    requestAnimationFrame(animateBhBars);
+    return;
+  }
+  alert('Unrecognised JSON shape from ' + srcName + '. Expected out.json (with .documents) or a single {composite, band, scores, flags, ratios} object.');
+}
+
+function renderBankDoc(name, doc) {
+  const band = (doc.band || 'weak').toLowerCase();
+  const color = bhBandColor(band);
+  const pct = Math.max(0, Math.min(100, doc.composite || 0));
+  const scores = Object.entries(doc.scores || {});
+  const bars = scores.map(([m, s]) => {
+    const c = s >= 65 ? '#22c55e' : s >= 40 ? '#fbbf24' : '#f87171';
+    return `<div class="score-bar-item">
+      <div class="score-bar-header">
+        <span class="score-bar-label">${BH_RATIO_LABELS[m] || m}</span>
+        <span class="score-bar-val" style="color:${c}">${fmt(s, 1)}</span>
+      </div>
+      <div class="score-bar-track">
+        <div class="score-bar-fill bh-fill" data-val="${Math.max(0, Math.min(100, s || 0))}" style="width:0%;background:${c}"></div>
+      </div>
+    </div>`;
+  }).join('');
+  const ratioRows = Object.entries(doc.ratios || {}).map(([k, r]) => {
+    const val = r.unit === 'amount_inr' ? bhFmtAmount(r.value) :
+                r.unit === 'ratio' ? fmt(r.value, 2) : fmt(r.value, 2) + '%';
+    return `<tr>
+      <td>${BH_RATIO_LABELS[k] || k}</td>
+      <td style="font-family:var(--font-mono)">${val}</td>
+      <td style="color:var(--text-secondary)">${r.unit || '—'}</td>
+      <td style="color:var(--text-secondary)">${r.period || '—'}</td>
+      <td style="color:var(--text-dim);font-size:11px">${r.method || '—'}</td>
+    </tr>`;
+  }).join('');
+  const flags = (doc.flags || []).map(f =>
+    `<div class="bh-flag"><span>⚠️</span><span>${f}</span></div>`).join('') ||
+    (doc.flags && doc.flags.length === 0 ? '<div class="bh-flag" style="border-left-color:var(--green-bright)"><span>✅</span><span>No risk flags raised.</span></div>' : '');
+  const entityType = (doc.entity_type || 'institution').toUpperCase();
+
+  return `
+    <div class="scorecard-wrap">
+      <div class="score-summary">
+        <div class="score-circle" style="background:conic-gradient(${color} ${pct*3.6}deg, var(--bg-secondary) 0deg)">
+          <div style="width:90px;height:90px;background:var(--bg-card2);border-radius:50%;position:absolute;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <div class="score-pct" style="color:${color}">${pct.toFixed(0)}</div>
+            <div class="score-label">/ 100</div>
+          </div>
+        </div>
+        <div class="bh-band bh-band-${band}" style="margin:12px auto 8px">${band}</div>
+        <div class="score-detail">${doc.entity || name}</div>
+        <div style="margin-top:6px;font-size:11px;color:var(--text-dim)">${entityType} · CAMELS-style vs RBI benchmarks</div>
+      </div>
+      <div>
+        <div class="section-title">Metric Scores</div>
+        <div style="padding:14px 16px;background:var(--bg-card);border-radius:8px">${bars}</div>
+        <div class="section-title" style="margin-top:20px">Risk Flags</div>
+        ${flags}
+      </div>
+    </div>
+    <div class="section-title" style="margin-top:24px">Detected Ratios (${name})</div>
+    <div class="fin-table-wrap"><table class="fin-table">
+      <thead><tr><th>Ratio</th><th style="text-align:right">Value</th><th>Unit</th><th>Period</th><th>Source</th></tr></thead>
+      <tbody>${ratioRows}</tbody>
+    </table></div>
+    <div style="height:28px"></div>`;
+}
+
+function animateBhBars() {
+  document.querySelectorAll('.bh-fill').forEach(el => {
+    setTimeout(() => { el.style.width = (el.dataset.val || 0) + '%'; }, 100);
+  });
 }
 </script>
 </body>
